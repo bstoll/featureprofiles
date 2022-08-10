@@ -21,13 +21,14 @@ import (
 	"fmt"
 	"testing"
 
+	"google.golang.org/grpc/metadata"
+
 	"github.com/openconfig/featureprofiles/internal/fptest"
 	"github.com/openconfig/ondatra"
 	"github.com/openconfig/ygot/ygot"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/metadata"
 
 	gpb "github.com/openconfig/gnmi/proto/gnmi"
 	telemetry "github.com/openconfig/ondatra/telemetry"
