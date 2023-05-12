@@ -26,6 +26,7 @@ proto/feature_go_proto/feature.pb.go: proto/feature.proto
 	protoc --proto_path=proto --go_out=./ --go_opt=Mfeature.proto=proto/feature_go_proto feature.proto
 
 proto/metadata_go_proto/metadata.pb.go: proto/metadata.proto
+	go mod vendor
 	mkdir -p proto/metadata_go_proto
-	protoc --proto_path=proto --go_out=./ --go_opt=Mmetadata.proto=proto/metadata_go_proto metadata.proto
+	protoc -I./vendor --proto_path=proto --go_out=./ --go_opt=Mmetadata.proto=proto/metadata_go_proto metadata.proto
 	goimports -w proto/metadata_go_proto/metadata.pb.go

@@ -24,10 +24,13 @@ jobs:
       with:
         version: '3.x'
         repo-token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Go mod vendor
+      run: |
+        go mod vendor
     - name: Lint protobufs
       run: |
         go install github.com/googleapis/api-linter/cmd/api-linter@latest
-        find . -name \*.proto -exec api-linter --disable-rule all --enable-rule core {} \+
+        find . -name \*.proto ! -path ./vendor/\* -exec api-linter -I./vendor --disable-rule all --enable-rule core {} \+
     - name: Compile topology binding textprotos
       run: |
         fail=0
@@ -48,7 +51,6 @@ jobs:
           fi
         done
         if [ "$fail" == "1" ]; then exit 1; fi
-
   validate_oc_paths:
     name: Validate OpenConfig Paths
     runs-on: ubuntu-latest
