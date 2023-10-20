@@ -26,32 +26,23 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
-func TestReserveFetchRelease(t *testing.T) {
+func TestReserveRelease(t *testing.T) {
 	ctx := context.Background()
 	tb := &opb.Testbed{}
 	b := &staticBind{r: resolver{&bindpb.Binding{}}, pushConfig: false}
 
-	if _, err := b.FetchReservation(ctx, resvID); err == nil {
-		t.Error("FetchReservation should fail before reservation is made.")
-	}
 	if err := b.Release(ctx); err == nil {
 		t.Error("Release should fail before reservation is made.")
 	}
 
-	resv, err := b.Reserve(ctx, tb, 0, 0, nil)
+	_, err := b.Reserve(ctx, tb, 0, 0, nil)
 	if err != nil {
 		t.Fatalf("Could not reserve testbed: %v", err)
-	}
-	if _, err := b.FetchReservation(ctx, resv.ID); err != nil {
-		t.Errorf("Could not fetch reservation %q: %v", resv.ID, err)
 	}
 	if err := b.Release(ctx); err != nil {
 		t.Errorf("Could not release reservation: %v", err)
 	}
 
-	if _, err := b.FetchReservation(ctx, resvID); err == nil {
-		t.Error("FetchReservation should fail after release.")
-	}
 	if err := b.Release(ctx); err == nil {
 		t.Error("Release should fail after reservation is already released.")
 	}
@@ -217,7 +208,6 @@ func TestReservation_Error(t *testing.T) {
 		`binding DUT "dut.b" not found in testbed`,
 		`missing binding for ATE "ate.tb"`,
 		`error binding ATE "ate.both"`,
-		`binding port "port3" not found in testbed`,
 		`testbed port "port1" is missing in binding`,
 	}
 	errText := err.Error()

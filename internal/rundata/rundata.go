@@ -44,23 +44,29 @@
 //     "dut1:4,dut2:4" - represents the dutdut.testbed.
 //     The testbed summary is discoverable using the binding reservation,
 //     whereas the testbed filename is not.
+//   - dut.vendor - the vendor of the DUT.
+//   - dut.model - the vendor model name of the DUT.
+//   - dut.os_version - the OS version running on the DUT.
 package rundata
 
 import (
-	"flag"
+	"context"
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
+	"flag"
+
+	"github.com/openconfig/featureprofiles/internal/metadata"
 	"github.com/openconfig/ondatra/binding"
 )
 
-// TestPlanID can be set by a test to optionally self-report the test
-// plan ID.
-var TestPlanID string
-
 var (
 	knownIssueURL = flag.String("known_issue_url", "", "Report a known issue that explains why the test fails.  This should be a URL to the issue tracker.")
+
+	// Stub out for unit tests.
+	metadataGetFn = metadata.Get
 )
 
 // topology summarizes the topology from the reservation.
@@ -87,20 +93,40 @@ func topology(resv *binding.Reservation) string {
 }
 
 // Properties builds the test properties map representing run data.
-func Properties(resv *binding.Reservation) map[string]string {
+func Properties(ctx context.Context, resv *binding.Reservation) map[string]string {
+	md := metadataGetFn()
+
 	m := make(map[string]string)
 	local(m)
 
-	if TestPlanID != "" {
-		m["test.plan_id"] = TestPlanID
+	if uuid := md.GetUuid(); uuid != "" {
+		m["test.uuid"] = uuid
 	}
+	if planID := md.GetPlanId(); planID != "" {
+		m["test.plan_id"] = planID
+	}
+	if desc := md.GetDescription(); desc != "" {
+		m["test.description"] = desc
+	}
+
 	if *knownIssueURL != "" {
 		m["known_issue_url"] = *knownIssueURL
 	}
 
-	if resv == nil {
-		return m
+	if resv != nil {
+		m["topology"] = topology(resv)
+		dutsInfo(ctx, m, resv)
 	}
-	m["topology"] = topology(resv)
+
+	return m
+}
+
+var timeBegin = time.Now()
+
+// Timing builds the test properties with the begin and end times.
+func Timing(context.Context) map[string]string {
+	m := make(map[string]string)
+	m["time.begin"] = fmt.Sprint(timeBegin.Unix())
+	m["time.end"] = fmt.Sprint(time.Now().Unix())
 	return m
 }

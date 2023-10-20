@@ -8,8 +8,8 @@ Ensure that acknowledgements are sent as is expected by gRIBI controller.
 
 *   Configure ATE port-1 connected to DUT port-1, and ATE port-2 to DUT port-2.
 *   Connect to the gRIBI server running on DUT, negotiating `RIB_AND_FIB_ACK` as
-    the requested `ack_type` and persistence mode `PRESERVE`. Flush all entries
-    after each case.
+    the requested `ack_type` and persistence mode `PRESERVE`. Make it become
+    leader. Flush all entries after each case.
 *   Install the following entries and determine whether the expected result is
     observed:
     *   A `NextHopGroup` referencing a `NextHop` is responded to with FIB ACK,
@@ -31,8 +31,6 @@ Ensure that acknowledgements are sent as is expected by gRIBI controller.
         *   An AFT entry deleting `IPv4Entry 203.0.113.0/24`.
         *   An AFT entry adding `IPv4Entry 203.0.113.0/24`.
 
-If the device supports it, repeat this test with gRIBI client persistence mode
-`DELETE` without flushing entries between cases.
 
 ## Config Parameter coverage
 
