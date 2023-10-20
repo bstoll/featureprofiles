@@ -106,6 +106,8 @@ jobs:
       run: |
         df -h
         pwd
+        ls -la /
+        ls -la /tmp
         du -sh /usr/share/dotnet || true
         du -sh "/usr/local/share/boost" || true
         echo $AGENT_TOOLSDIRECTORY
