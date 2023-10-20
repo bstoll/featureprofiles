@@ -106,12 +106,11 @@ jobs:
       run: |
         df -h
         pwd
-        du -sh /usr/share/dotnet
-        du -sh /opt/ghc
-        du -sh "/usr/local/share/boost"
+        du -sh /usr/share/dotnet || true
+        du -sh "/usr/local/share/boost" || true
         echo $AGENT_TOOLSDIRECTORY
-        du -sh "$AGENT_TOOLSDIRECTORY"
-        du -sh /usr/local/lib/android
-        du -sh /opt/hostedtoolcache/CodeQL
+        du -sh "$AGENT_TOOLSDIRECTORY"  || true
+        du -sh /usr/local/lib/android || true
+        du -sh /opt/hostedtoolcache/CodeQL || true
         free -m
         GOGC=30 staticcheck ./...
