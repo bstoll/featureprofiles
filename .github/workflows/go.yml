@@ -106,4 +106,12 @@ jobs:
       run: |
         df -h
         pwd
+        du -sh /usr/share/dotnet
+        du -sh /opt/ghc
+        du -sh "/usr/local/share/boost"
+        echo $AGENT_TOOLSDIRECTORY
+        du -sh "$AGENT_TOOLSDIRECTORY"
+        du -sh /usr/local/lib/android
+        du -sh /opt/hostedtoolcache/CodeQL
+        free -m
         GOGC=30 staticcheck ./...
