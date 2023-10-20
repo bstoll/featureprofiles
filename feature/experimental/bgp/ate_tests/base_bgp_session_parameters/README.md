@@ -12,15 +12,23 @@ BGP session establishment between DUT - ATE and verifiying different session par
 
 Test the abnormal termination of session using notification message:
 
-*   Establish BGP session between DUT (AS 65540) and ATE (AS 65550).
+*   Establish BGP session between DUT (AS 65540) and ATE (AS 65550). The DUT/ATE
+    peers should be configured with MD5 authentication using the same password.
 
     *   Ensure session state should be `ESTABLISHED`.
     *   Verify BGP capabilities: route refresh, ASN32 and MPBGP.
-
+    
 *   Verify BGP session disconnect by sending notification message from ATE.
 
     *   Send `CEASE` notification from ATE.
     *   Ensure that DUT telemetry correctly reports the error code.
+
+Test md5 password authentication on session establishment:
+
+*   Configure matching passwords on DUT and ATE. Verify that BGP adjacency succeeds.
+
+*   Configure mismatched passwords on DUT and ATE. Verify that BGP adjacency fails.
+
 
 Test the normal session establishment and termination:
 
@@ -37,7 +45,6 @@ Test the normal session establishment and termination:
     And include the following session parameters for all cases:
 
     *   Explicitly specified Router ID.
-    *   Enable MD5 authentication on DUT and ATE.
     *   Explicit holdtime interval and keepalive interval.
     *   Explicit connect retry interval.
 

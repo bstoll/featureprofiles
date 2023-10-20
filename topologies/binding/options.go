@@ -17,32 +17,37 @@ package binding
 import (
 	"context"
 	"crypto/tls"
-	"flag"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"time"
 
+	"flag"
+
+	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
+
+	bindpb "github.com/openconfig/featureprofiles/topologies/proto/binding"
+	"github.com/openconfig/ondatra/binding/ixweb"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
-
-	bindpb "github.com/openconfig/featureprofiles/topologies/proto/binding"
-	"github.com/openconfig/ondatra/binding/ixweb"
 )
 
 // IANA assigns 9339 for gNxI, and 9559 for P4RT.  There hasn't been a
 // port assignment for gRIBI, so using Arista's default which is 6040.
 var (
-	gnmiPort  = flag.Int("gnmi_port", 9339, "default gNMI port")
-	gnoiPort  = flag.Int("gnoi_port", 9339, "default gNOI port")
-	gnsiPort  = flag.Int("gnsi_port", 9339, "default gNSI port")
-	gribiPort = flag.Int("gribi_port", 6040, "default gRIBI port")
-	p4rtPort  = flag.Int("p4rt_port", 9559, "default P4RT part")
+	gnmiPort    = flag.Int("gnmi_port", 9339, "default gNMI port")
+	gnoiPort    = flag.Int("gnoi_port", 9339, "default gNOI port")
+	gnsiPort    = flag.Int("gnsi_port", 9339, "default gNSI port")
+	gribiPort   = flag.Int("gribi_port", 6040, "default gRIBI port")
+	p4rtPort    = flag.Int("p4rt_port", 9559, "default P4RT part")
+	ateGnmiPort = flag.Int("ate_gnmi_port", 50051, "default ATE gNMI port")
+	ateOtgPort  = flag.Int("ate_grpc_port", 40051, "default ATE gRPC port for running OTG test")
 )
 
 // creds implements the grpc.PerRPCCredentials interface, to be used
@@ -52,7 +57,7 @@ type creds struct {
 	secure             bool
 }
 
-func (c *creds) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+func (c *creds) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
 	return map[string]string{
 		"username": c.username,
 		"password": c.password,
@@ -71,10 +76,32 @@ type dialer struct {
 	*bindpb.Options
 }
 
+// load trust bundle and client key and certificate
+func (d *dialer) loadCertificates() (*x509.CertPool, tls.Certificate, error) {
+	if d.CertFile == "" || d.KeyFile == "" || d.TrustBundleFile == "" {
+		return nil, tls.Certificate{}, fmt.Errorf("cert_file, key_file, and trust_bundle_file need to be set when mutual tls is set")
+	}
+	caCertBytes, err := os.ReadFile(d.TrustBundleFile)
+	if err != nil {
+		return nil, tls.Certificate{}, err
+	}
+	trusBundle := x509.NewCertPool()
+	if !trusBundle.AppendCertsFromPEM(caCertBytes) {
+		return nil, tls.Certificate{}, fmt.Errorf("error in loading ca trust bundle")
+	}
+	keyPair, err := tls.LoadX509KeyPair(d.CertFile, d.KeyFile)
+	if err != nil {
+		return nil, tls.Certificate{}, err
+	}
+	return trusBundle, keyPair, nil
+
+}
+
 // dialGRPC dials a gRPC connection using the binding options.
 //
 //lint:ignore U1000 will be used by the binding.
-func (d *dialer) dialGRPC(ctx context.Context, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
+func (d *dialer) dialGRPC(ctx context.Context, overrideOpts ...grpc.DialOption) (*grpc.ClientConn, error) {
+	opts := []grpc.DialOption{grpc.WithBlock()}
 	switch {
 	case d.Insecure:
 		tc := insecure.NewCredentials()
@@ -82,11 +109,36 @@ func (d *dialer) dialGRPC(ctx context.Context, opts ...grpc.DialOption) (*grpc.C
 	case d.SkipVerify:
 		tc := credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})
 		opts = append(opts, grpc.WithTransportCredentials(tc))
+	case d.MutualTls:
+		trusBundle, keyPair, err := d.loadCertificates()
+		if err != nil {
+			return nil, err
+		}
+		tls := &tls.Config{
+			Certificates: []tls.Certificate{keyPair},
+			RootCAs:      trusBundle,
+		}
+		tlsConfig := credentials.NewTLS(tls)
+		opts = append(opts, grpc.WithTransportCredentials(tlsConfig))
 	}
 	if d.Username != "" {
 		c := &creds{d.Username, d.Password, !d.Insecure}
 		opts = append(opts, grpc.WithPerRPCCredentials(c))
 	}
+	if d.MaxRecvMsgSize != 0 {
+		opts = append(opts, grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(int(d.MaxRecvMsgSize))))
+	}
+	if d.Timeout != 0 {
+		retryOpt := grpc_retry.WithPerRetryTimeout(time.Duration(d.Timeout) * time.Second)
+		opts = append(opts,
+			grpc.WithStreamInterceptor(grpc_retry.StreamClientInterceptor(retryOpt)),
+			grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(retryOpt)),
+		)
+		var cancelFunc context.CancelFunc
+		ctx, cancelFunc = context.WithTimeout(ctx, time.Duration(d.Timeout)*time.Second)
+		defer cancelFunc()
+	}
+	opts = append(opts, overrideOpts...)
 	return grpc.DialContext(ctx, d.Target, opts...)
 }
 
@@ -115,7 +167,10 @@ func knownHostsCallback() (ssh.HostKeyCallback, error) {
 func (d *dialer) dialSSH() (*ssh.Client, error) {
 	c := &ssh.ClientConfig{
 		User: d.Username,
-		Auth: []ssh.AuthMethod{ssh.Password(d.Password)},
+		Auth: []ssh.AuthMethod{
+			ssh.Password(d.Password),
+			ssh.KeyboardInteractive(d.sshInteractive),
+		},
 	}
 	if d.SkipVerify {
 		c.HostKeyCallback = ssh.InsecureIgnoreHostKey()
@@ -127,6 +182,17 @@ func (d *dialer) dialSSH() (*ssh.Client, error) {
 		c.HostKeyCallback = cb
 	}
 	return ssh.Dial("tcp", d.Target, c)
+}
+
+// For every question asked in an interactive login ssh session, set the answer to user password.
+func (d *dialer) sshInteractive(user, instruction string, questions []string, echoes []bool) (answers []string, err error) {
+	_, _, _ = user, instruction, echoes // unused
+	answers = make([]string, len(questions))
+	for n := range questions {
+		answers[n] = d.Password
+	}
+
+	return answers, nil
 }
 
 // newHTTPClient makes an http.Client using the binding options.
@@ -229,6 +295,17 @@ func (r *resolver) dutDialer(dutName string, port int, optionsFn func(*bindpb.De
 	return merge(targetOptions, r.Options, dut.Options, optionsFn(dut)), nil
 }
 
+func (r *resolver) ateDialer(ateName string, port int, optionsFn func(*bindpb.Device) *bindpb.Options) (dialer, error) {
+	ate := r.ateByName(ateName)
+	if ate == nil {
+		return dialer{nil}, fmt.Errorf("ATE name %q is missing from the binding", ateName)
+	}
+	targetOptions := &bindpb.Options{
+		Target: fmt.Sprintf("%s:%d", ate.Name, port),
+	}
+	return merge(targetOptions, r.Options, ate.Options, optionsFn(ate)), nil
+}
+
 func (r *resolver) gnmi(dutName string) (dialer, error) {
 	return r.dutDialer(dutName, *gnmiPort,
 		func(dut *bindpb.Device) *bindpb.Options { return dut.Gnmi })
@@ -261,6 +338,16 @@ func (r *resolver) ssh(dutName string) (dialer, error) {
 	}
 	targetOptions := &bindpb.Options{Target: dut.Name}
 	return merge(targetOptions, r.Options, dut.Options, dut.Ssh), nil
+}
+
+func (r *resolver) ateGNMI(ateName string) (dialer, error) {
+	return r.ateDialer(ateName, *ateGnmiPort,
+		func(ate *bindpb.Device) *bindpb.Options { return ate.Gnmi })
+}
+
+func (r *resolver) ateOtg(ateName string) (dialer, error) {
+	return r.ateDialer(ateName, *ateOtgPort,
+		func(ate *bindpb.Device) *bindpb.Options { return ate.Otg })
 }
 
 func (r *resolver) ixnetwork(ateName string) (dialer, error) {
