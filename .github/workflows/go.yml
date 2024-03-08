@@ -23,7 +23,6 @@ jobs:
           ~/go/pkg/mod
           ~/.cache/go-build
         key: ${{ github.job }}-${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-        restore-keys: ${{ github.job }}-${{ runner.os }}-go-build-
     - name: Build
       run: go build -v ./...
   test:
@@ -41,7 +40,6 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
           key: ${{ github.job }}-${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ github.job }}-${{ runner.os }}-go-build-
       # Dependency for Go module github.com/google/gopacket
       - name: Install libpcap-dev
         run: sudo apt-get -y install libpcap-dev
@@ -65,6 +63,8 @@ jobs:
         sudo rm -rf /usr/share/dotnet
         sudo rm -rf /usr/local/lib/android
         sudo rm -rf /opt/hostedtoolcache/CodeQL
+        sudo mv "${HOME}/.cache" /mnt/cache
+        ln -s /mnt/cache "${HOME}/.cache"
     - name: Checkout code
       uses: actions/checkout@v3
     - name: Cache
@@ -75,7 +75,6 @@ jobs:
           ~/.cache/go-build
           ~/.cache/staticcheck
         key: ${{ github.job }}-${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-        restore-keys: ${{ github.job }}-${{ runner.os }}-go-build-
     # Dependency for Go module github.com/google/gopacket
     - name: Install libpcap-dev
       run: sudo apt-get -y install libpcap-dev
@@ -110,5 +109,53 @@ jobs:
       run: revive ./...
     - name: Get staticcheck
       run: go install honnef.co/go/tools/cmd/staticcheck@latest
+    - name: print disk usage
+      run: |
+        ls -la /
+        echo du -sh /tmp
+        du -sh /tmp || true
+        echo ls -la /tmp
+        ls -la /tmp || true
+        echo du -sh .
+        du -sh . || true
+        echo df -h
+        df -h || true
+        echo du -sh ../
+        du -sh ../ || true
+        echo du -sh /home/runner/.cache/*
+        du -sh /home/runner/.cache/* || true
+        echo ls -la /home
+        ls -la /home
+        echo ls -la /home/runner
+        ls -la /home/runner
     - name: Run staticcheck
       run: GOGC=30 staticcheck ./...
+    - name: print disk usage
+      run: |
+        ls -la /
+        echo du -sh /tmp
+        du -sh /tmp || true
+        echo ls -la /tmp
+        ls -la /tmp || true
+        echo du -sh .
+        du -sh . || true
+        echo df -h
+        df -h || true
+        echo du -sh ../
+        du -sh ../ || true
+        echo du -sh /home/runner/.cache/*
+        du -sh /home/runner/.cache/* || true
+        echo ls -la /home
+        ls -la /home  || true
+        echo ls -la /home/runner
+        ls -la /home/runner  || true
+        echo pwd
+        pwd  || true
+        echo ls -la /home/runner/work
+        ls -la /home/runner/work  || true
+        echo ls -la /home/runner/work/featureprofiles/
+        ls -la /home/runner/work/featureprofiles/ || true
+        echo du -sh /home/runner/work/
+        du -sh /home/runner/work/ || true
+        echo ls -laR /mnt
+        ls -laR /mnt || true
